@@ -2,6 +2,22 @@
 
 import { useMemo, useState, useEffect } from "react";
 import Link from "next/link";
+import { 
+  Search, 
+  Filter, 
+  SortAsc, 
+  Play, 
+  Pause, 
+  Clock, 
+  FileText, 
+  Send, 
+  Download, 
+  Edit3, 
+  Trash2, 
+  Eye,
+  X,
+  Plus
+} from "lucide-react";
 
 /** -------------------- Types & Mock Data -------------------- */
 type ArchiveItem = {
@@ -46,21 +62,25 @@ const INITIAL_ITEMS: ArchiveItem[] = [
 function clsx(...c: (string | false | null | undefined)[]) {
   return c.filter(Boolean).join(" ");
 }
+
 function formatDate(iso: string) {
   const d = new Date(iso);
   return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "2-digit" });
 }
+
 function hoursUntil(iso?: string | null) {
   if (!iso) return null;
   const diff = new Date(iso).getTime() - Date.now();
   if (diff <= 0) return 0;
   return Math.ceil(diff / (1000 * 60 * 60));
 }
+
 function isExpired(iso?: string | null) {
   if (!iso) return true;
   const diff = new Date(iso).getTime() - Date.now();
   return diff <= 0;
 }
+
 function isExpiringSoon(iso?: string | null) {
   if (!iso) return false;
   const diff = new Date(iso).getTime() - Date.now();
@@ -115,6 +135,7 @@ export default function ArchivePage() {
     setData(prev => prev.map(i => (i.id === id ? { ...i, ...patch } : i)));
     // TODO: await fetch("/api/archive/update", { method:"POST", body: JSON.stringify({ id, ...patch }) })
   }
+  
   function deleteItem(id: string) {
     setData(prev => prev.filter(i => i.id !== id));
     // TODO: await fetch("/api/archive/delete", { method:"POST", body: JSON.stringify({ id }) })
@@ -168,43 +189,65 @@ export default function ArchivePage() {
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         {/* Search and Filters - Horizontal scrollable on mobile */}
         <div className="flex gap-3 overflow-x-auto scrollbar-hide pb-2 lg:pb-0">
-          <input
-            id="search-input"
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search by title or tag..."
-            className="h-11 w-full rounded-lg border border-neutral-300 px-4 text-base outline-none focus:ring-2 focus:ring-neutral-400 focus:border-transparent sm:w-80 flex-shrink-0 bg-white text-neutral-900 placeholder-neutral-500"
-            aria-label="Search archive by title or tags"
-          />
-          <select
-            id="tag-filter"
-            value={tag}
-            onChange={(e) => setTag(e.target.value)}
-            className="h-11 rounded-lg border border-neutral-300 px-4 text-base outline-none focus:ring-2 focus:ring-neutral-400 focus:border-transparent flex-shrink-0 bg-white text-neutral-900"
-            aria-label="Filter by tag"
-          >
-            {tags.map(t => <option key={t} value={t}>{t === "all" ? "All Tags" : t}</option>)}
-          </select>
-          <select
-            id="sort-filter"
-            value={sort}
-            onChange={(e) => setSort(e.target.value as any)}
-            className="h-11 rounded-lg border border-neutral-300 px-4 text-base outline-none focus:ring-2 focus:ring-neutral-400 focus:border-transparent flex-shrink-0 bg-white text-neutral-900"
-            aria-label="Sort archive items"
-          >
-            <option value="newest">Newest First</option>
-            <option value="oldest">Oldest First</option>
-            <option value="title">Alphabetical</option>
-          </select>
+          <div className="relative flex-shrink-0">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-neutral-400" />
+            <input
+              id="search-input"
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search by title or tag..."
+              className="h-11 w-full rounded-lg border border-neutral-300 pl-10 pr-4 text-base outline-none focus:ring-2 focus:ring-neutral-400 focus:border-transparent sm:w-80 bg-white text-neutral-900 placeholder-neutral-500"
+              aria-label="Search archive by title or tags"
+            />
+          </div>
+          
+          <div className="relative flex-shrink-0">
+            <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-neutral-400" />
+            <select
+              id="tag-filter"
+              value={tag}
+              onChange={(e) => setTag(e.target.value)}
+              className="h-11 rounded-lg border border-neutral-300 pl-10 pr-8 text-base outline-none focus:ring-2 focus:ring-neutral-400 focus:border-transparent bg-white text-neutral-900 appearance-none"
+              aria-label="Filter by tag"
+            >
+              {tags.map(t => <option key={t} value={t}>{t === "all" ? "All Tags" : t}</option>)}
+            </select>
+            <div className="absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none">
+              <svg className="h-4 w-4 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </div>
+          </div>
+          
+          <div className="relative flex-shrink-0">
+            <SortAsc className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-neutral-400" />
+            <select
+              id="sort-filter"
+              value={sort}
+              onChange={(e) => setSort(e.target.value as any)}
+              className="h-11 rounded-lg border border-neutral-300 pl-10 pr-8 text-base outline-none focus:ring-2 focus:ring-neutral-400 focus:border-transparent bg-white text-neutral-900 appearance-none"
+              aria-label="Sort archive items"
+            >
+              <option value="newest">Newest First</option>
+              <option value="oldest">Oldest First</option>
+              <option value="title">Alphabetical</option>
+            </select>
+            <div className="absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none">
+              <svg className="h-4 w-4 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </div>
+          </div>
         </div>
 
         {/* Upload New Button */}
         <Link
           href="/upload"
-          className="h-11 inline-flex items-center justify-center rounded-lg bg-neutral-900 px-6 text-base font-medium text-white hover:bg-neutral-800 focus:outline-none focus:ring-2 focus:ring-neutral-400 focus:ring-offset-2 transition-colors flex-shrink-0"
+          className="h-11 inline-flex items-center justify-center gap-2 rounded-lg bg-neutral-900 px-6 text-base font-medium text-white hover:bg-neutral-800 focus:outline-none focus:ring-2 focus:ring-neutral-400 focus:ring-offset-2 transition-colors flex-shrink-0"
           aria-label="Upload new lecture or audio"
         >
+          <Plus className="h-4 w-4" />
           Upload New
         </Link>
       </div>
@@ -335,18 +378,21 @@ function Row({
     onUpdate(item.id, { title: title.trim() || item.title, tags });
     setEditing(false);
   }
+  
   function cancel() {
     setTitle(item.title);
     setTags(item.tags);
     setNewTag("");
     setEditing(false);
   }
+  
   function addTag() {
     const t = newTag.trim();
     if (!t) return;
     if (!tags.includes(t)) setTags((prev) => [...prev, t]);
     setNewTag("");
   }
+  
   function removeTag(t: string) {
     setTags(prev => prev.filter(x => x !== t));
   }
@@ -360,7 +406,7 @@ function Row({
           {!editing ? (
             <button
               onClick={() => setEditing(true)}
-              className="text-left text-xl font-semibold text-neutral-900 hover:text-neutral-700 hover:underline focus:outline-none focus:ring-2 focus:ring-neutral-400 focus:ring-offset-2 rounded px-1 -ml-1"
+              className="text-left text-xl font-semibold text-neutral-900 hover:text-neutral-700 hover:underline focus:outline-none focus:ring-2 focus:ring-neutral-400 focus:ring-offset-2 rounded px-1 -ml-1 transition-colors"
               aria-label={`Edit title: ${item.title}`}
             >
               {item.title}
@@ -395,9 +441,15 @@ function Row({
 
         {/* Meta: Date, Word Count, Tags */}
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-base text-neutral-600">
-          <span className="font-medium">{formatDate(item.createdAt)}</span>
+          <span className="font-medium flex items-center gap-1">
+            <Clock className="h-4 w-4" />
+            {formatDate(item.createdAt)}
+          </span>
           <span aria-hidden className="text-neutral-400">•</span>
-          <span>{item.words.toLocaleString()} words</span>
+          <span className="flex items-center gap-1">
+            <FileText className="h-4 w-4" />
+            {item.words.toLocaleString()} words
+          </span>
           <span aria-hidden className="text-neutral-400">•</span>
           {!editing ? (
             <span className="flex flex-wrap gap-2">
@@ -417,7 +469,7 @@ function Row({
                     className="text-neutral-500 hover:text-neutral-700 transition-colors focus:outline-none focus:ring-2 focus:ring-neutral-400 focus:ring-offset-1 rounded-full p-0.5"
                     aria-label={`Remove tag ${t}`}
                   >
-                    ×
+                    <X className="h-3 w-3" />
                   </button>
                 </span>
               ))}
@@ -435,7 +487,7 @@ function Row({
                   className="h-9 rounded-lg border border-neutral-300 px-3 text-sm font-medium text-neutral-700 hover:bg-neutral-50 focus:outline-none focus:ring-2 focus:ring-neutral-400 focus:ring-offset-1 transition-colors"
                   aria-label="Add tag"
                 >
-                  Add
+                  <Plus className="h-4 w-4" />
                 </button>
               </div>
             </div>
@@ -459,20 +511,23 @@ function Row({
                   </audio>
                 </div>
                 {expiringSoon && (
-                  <span className="rounded-full bg-neutral-200 px-3 py-1 text-sm font-medium text-neutral-700 border border-neutral-300">
-                    ⏰ Expires in {expiresIn}h
+                  <span className="rounded-full bg-amber-100 px-3 py-1 text-sm font-medium text-amber-800 border border-amber-200 flex items-center gap-1">
+                    <Clock className="h-4 w-4" />
+                    Expires in {expiresIn}h
                   </span>
                 )}
                 {!expiringSoon && expiresIn !== null && expiresIn > 6 && (
-                  <span className="rounded-full bg-neutral-100 px-3 py-1 text-sm font-medium text-neutral-600 border border-neutral-200">
-                    ✓ Available for {expiresIn}h
+                  <span className="rounded-full bg-green-100 px-3 py-1 text-sm font-medium text-green-800 border border-green-200 flex items-center gap-1">
+                    <Play className="h-4 w-4" />
+                    Available for {expiresIn}h
                   </span>
                 )}
               </div>
             ) : (
               <div className="flex items-center gap-2 text-sm text-neutral-500">
-                <span className="rounded-full bg-neutral-100 px-3 py-1 border border-neutral-200">
-                  🕐 Audio expired
+                <span className="rounded-full bg-neutral-100 px-3 py-1 border border-neutral-200 flex items-center gap-1">
+                  <Clock className="h-4 w-4" />
+                  Audio expired
                 </span>
               </div>
             )}
@@ -484,40 +539,45 @@ function Row({
       <div className="flex flex-wrap gap-3 pt-2 border-t border-neutral-100">
         <Link
           href={`/archive/${item.id}`}
-          className="h-11 rounded-lg border border-neutral-300 px-4 text-base font-medium text-neutral-700 hover:bg-neutral-50 focus:outline-none focus:ring-2 focus:ring-neutral-400 focus:ring-offset-2 transition-colors flex-1 sm:flex-none text-center min-w-[120px]"
+          className="h-11 rounded-lg border border-neutral-300 px-4 text-base font-medium text-neutral-700 hover:bg-neutral-50 focus:outline-none focus:ring-2 focus:ring-neutral-400 focus:ring-offset-2 transition-colors flex-1 sm:flex-none text-center min-w-[120px] flex items-center justify-center gap-2"
           aria-label={`View transcript for ${item.title}`}
         >
+          <Eye className="h-4 w-4" />
           View
         </Link>
         <button
           onClick={() => console.log("TODO: send to ThinkSpace", item.id)}
-          className="h-11 rounded-lg border border-neutral-300 px-4 text-base font-medium text-neutral-700 hover:bg-neutral-50 focus:outline-none focus:ring-2 focus:ring-neutral-400 focus:ring-offset-2 transition-colors flex-1 sm:flex-none text-center min-w-[120px]"
+          className="h-11 rounded-lg border border-neutral-300 px-4 text-base font-medium text-neutral-700 hover:bg-neutral-50 focus:outline-none focus:ring-2 focus:ring-neutral-400 focus:ring-offset-2 transition-colors flex-1 sm:flex-none text-center min-w-[120px] flex items-center justify-center gap-2"
           aria-label={`Send ${item.title} to ThinkSpace`}
         >
+          <Send className="h-4 w-4" />
           Send to ThinkSpace
         </button>
         <button
           onClick={() => console.log("TODO: export TXT", item.id)}
-          className="h-11 rounded-lg border border-neutral-300 px-4 text-base font-medium text-neutral-700 hover:bg-neutral-50 focus:outline-none focus:ring-2 focus:ring-neutral-400 focus:ring-offset-2 transition-colors flex-1 sm:flex-none text-center min-w-[120px]"
+          className="h-11 rounded-lg border border-neutral-300 px-4 text-base font-medium text-neutral-700 hover:bg-neutral-50 focus:outline-none focus:ring-2 focus:ring-neutral-400 focus:ring-offset-2 transition-colors flex-1 sm:flex-none text-center min-w-[120px] flex items-center justify-center gap-2"
           aria-label={`Export ${item.title} as text`}
         >
+          <Download className="h-4 w-4" />
           Export
         </button>
         <button
           onClick={() => setEditing(true)}
-          className="h-11 rounded-lg border border-neutral-300 px-4 text-base font-medium text-neutral-700 hover:bg-neutral-50 focus:outline-none focus:ring-2 focus:ring-neutral-400 focus:ring-offset-2 transition-colors flex-1 sm:flex-none text-center min-w-[120px]"
+          className="h-11 rounded-lg border border-neutral-300 px-4 text-base font-medium text-neutral-700 hover:bg-neutral-50 focus:outline-none focus:ring-2 focus:ring-neutral-400 focus:ring-offset-2 transition-colors flex-1 sm:flex-none text-center min-w-[120px] flex items-center justify-center gap-2"
           aria-label={`Edit ${item.title}`}
         >
+          <Edit3 className="h-4 w-4" />
           Edit
         </button>
         <button
           onClick={() => onDelete(item.id)}
           className={clsx(
-            "h-11 rounded-lg px-4 text-base font-medium border transition-colors flex-1 sm:flex-none text-center min-w-[120px] focus:outline-none focus:ring-2 focus:ring-neutral-400 focus:ring-offset-2",
+            "h-11 rounded-lg px-4 text-base font-medium border transition-colors flex-1 sm:flex-none text-center min-w-[120px] focus:outline-none focus:ring-2 focus:ring-neutral-400 focus:ring-offset-2 flex items-center justify-center gap-2",
             "border-neutral-300 text-neutral-700 hover:bg-neutral-50"
           )}
           aria-label={`Delete ${item.title}`}
         >
+          <Trash2 className="h-4 w-4" />
           Delete
         </button>
       </div>
