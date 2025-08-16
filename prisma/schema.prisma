@@ -23,12 +23,13 @@ model ArchiveItem {
   title        String
   tags         String[]  @default([])
   audioUrl     String?
-  transcript   String
-  summary      String
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime
-  audioExpires DateTime?
-  User         User      @relation(fields: [userId], references: [id])
+  transcript   String   @db.Text
+  summary      String   @db.Text
+  wordCount    Int
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  expiresAt    DateTime? // Audio expiration time (24 hours from creation)
+  User         User     @relation(fields: [userId], references: [id])
 
   @@schema("private")
 }

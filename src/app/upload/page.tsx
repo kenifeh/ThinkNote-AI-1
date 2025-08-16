@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { RecordPanel } from "@/components/RecordPanel";
 import { 
   Play, 
@@ -13,15 +13,28 @@ import {
   ChevronDown, 
   ChevronUp,
   CheckCircle,
-  AlertCircle
+  AlertCircle,
+  Clock,
+  Tag,
+  Mic,
+  FileText,
+  Sparkles
 } from "lucide-react";
+
+interface ProcessingResult {
+  transcript: string;
+  summary: string;
+  wordCount: number;
+  audioUrl?: string;
+  saved?: boolean;
+}
 
 export default function UploadPage() {
   const [blob, setBlob] = useState<Blob | null>(null);
   const [title, setTitle] = useState("");
   const [tags, setTags] = useState("");
   const [processing, setProcessing] = useState(false);
-  const [result, setResult] = useState<any>(null);
+  const [result, setResult] = useState<ProcessingResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [processingStep, setProcessingStep] = useState<string>("");
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
@@ -31,14 +44,81 @@ export default function UploadPage() {
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editedTitle, setEditedTitle] = useState("");
   const [isRecording, setIsRecording] = useState(false);
+  const [liveTranscription, setLiveTranscription] = useState<string>("");
+  const [processingProgress, setProcessingProgress] = useState(0);
+  const [canProcess, setCanProcess] = useState(false);
+  
   const audioRef = useRef<HTMLAudioElement>(null);
+  const chunksRef = useRef<BlobPart[]>([]);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+
+  // Check if we can process audio
+  useEffect(() => {
+    setCanProcess(!!(blob && title.trim()));
+  }, [blob, title]);
+
+  // Auto-save to localStorage for unsaved work
+  useEffect(() => {
+    if (blob || title || tags) {
+      localStorage.setItem('thinknote-upload-draft', JSON.stringify({
+        title,
+        tags,
+        hasBlob: !!blob
+      }));
+    }
+  }, [blob, title, tags]);
+
+  // Load draft from localStorage
+  useEffect(() => {
+    const draft = localStorage.getItem('thinknote-upload-draft');
+    if (draft) {
+      try {
+        const { title: draftTitle, tags: draftTags } = JSON.parse(draft);
+        if (draftTitle) setTitle(draftTitle);
+        if (draftTags) setTags(draftTags);
+      } catch (e) {
+        console.error('Failed to load draft:', e);
+      }
+    }
+  }, []);
+
+  // Warn user before leaving with unsaved work
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (blob || title.trim()) {
+        e.preventDefault();
+        e.returnValue = 'You have unsaved work. Are you sure you want to leave?';
+        return e.returnValue;
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [blob, title]);
 
   const onFile = (f: File | null) => {
-    setBlob(f ? f : null);
     if (f) {
+      // Validate file size (50MB limit)
+      if (f.size > 50 * 1024 * 1024) {
+        setError("File size exceeds 50MB limit. Please choose a smaller file.");
+        return;
+      }
+
+      // Validate file type
+      const validTypes = ['audio/mp3', 'audio/wav', 'audio/m4a', 'audio/ogg', 'audio/webm'];
+      if (!validTypes.includes(f.type)) {
+        setError("Invalid file type. Please upload MP3, WAV, M4A, OGG, or WebM files.");
+        return;
+      }
+
+      setBlob(f);
       setAudioUrl(URL.createObjectURL(f));
       setTitle(f.name.replace(/\.[^/.]+$/, "")); // Remove file extension
       setEditedTitle(f.name.replace(/\.[^/.]+$/, ""));
+      setError(null);
+    } else {
+      setBlob(null);
+      setAudioUrl(null);
     }
   };
 
@@ -49,11 +129,12 @@ export default function UploadPage() {
     const timestamp = new Date().toLocaleString();
     setTitle(`Recording ${timestamp}`);
     setEditedTitle(`Recording ${timestamp}`);
+    setError(null);
   };
 
   const onRecordingStart = () => {
     setIsRecording(true);
-    // Create a temporary blob for live transcription if needed
+    setLiveTranscription("");
     if (!blob) {
       setTitle("Live Recording");
       setEditedTitle("Live Recording");
@@ -68,32 +149,82 @@ export default function UploadPage() {
 
     setProcessing(true);
     setError(null);
-    setProcessingStep("Uploading audio file...");
-
-    const form = new FormData();
-    form.append("file", blob);
-    form.append("title", title.trim());
-    if (tags.trim()) {
-      form.append("tags", tags.trim());
-    }
+    setProcessingProgress(0);
+    setProcessingStep("Preparing audio...");
 
     try {
-      setProcessingStep("Transcribing audio...");
-      const response = await fetch("/api/upload", { 
+      // Step 1: Upload audio to storage
+      setProcessingStep("Uploading audio file...");
+      setProcessingProgress(20);
+      
+      const uploadForm = new FormData();
+      uploadForm.append("file", blob);
+      uploadForm.append("title", title.trim());
+      if (tags.trim()) {
+        uploadForm.append("tags", tags.trim());
+      }
+
+      const uploadResponse = await fetch("/api/upload", { 
         method: "POST", 
-        body: form 
+        body: uploadForm 
       });
       
-      if (!response.ok) {
-        const errorData = await response.json();
+      if (!uploadResponse.ok) {
+        const errorData = await uploadResponse.json();
         throw new Error(errorData.error || "Upload failed");
       }
 
+      const uploadData = await uploadResponse.json();
+      setProcessingProgress(40);
+      setProcessingStep("Transcribing audio...");
+
+      // Step 2: Transcribe audio
+      const transcribeResponse = await fetch("/api/transcribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          audioUrl: uploadData.audioUrl || URL.createObjectURL(blob),
+          title: title.trim()
+        })
+      });
+
+      if (!transcribeResponse.ok) {
+        throw new Error("Transcription failed");
+      }
+
+      const transcribeData = await transcribeResponse.json();
+      setProcessingProgress(70);
       setProcessingStep("Generating summary...");
-      const data = await response.json();
-      setResult(data);
+
+      // Step 3: Generate summary
+      const summaryResponse = await fetch("/api/summarize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          transcript: transcribeData.transcript,
+          title: title.trim()
+        })
+      });
+
+      if (!summaryResponse.ok) {
+        throw new Error("Summary generation failed");
+      }
+
+      const summaryData = await summaryResponse.json();
+      setProcessingProgress(100);
       setProcessingStep("Complete!");
-      
+
+      // Calculate word count
+      const wordCount = transcribeData.transcript.split(/\s+/).filter(Boolean).length;
+
+      // Set results
+      setResult({
+        transcript: transcribeData.transcript,
+        summary: summaryData.summary || summaryData.abstract || "Summary generated successfully",
+        wordCount,
+        audioUrl: uploadData.audioUrl || URL.createObjectURL(blob)
+      });
+
       // Auto-play the audio after processing
       setTimeout(() => {
         if (audioRef.current) {
@@ -101,13 +232,17 @@ export default function UploadPage() {
           setIsPlaying(true);
         }
       }, 1000);
+
+      // Clear draft from localStorage
+      localStorage.removeItem('thinknote-upload-draft');
       
     } catch (error) {
       console.error("Error processing audio:", error);
-      setError(error instanceof Error ? error.message : "Upload failed");
+      setError(error instanceof Error ? error.message : "Processing failed");
     } finally {
       setProcessing(false);
       setProcessingStep("");
+      setProcessingProgress(0);
     }
   };
 
@@ -124,10 +259,13 @@ export default function UploadPage() {
     setIsEditingTitle(false);
     setEditedTitle("");
     setIsRecording(false);
+    setLiveTranscription("");
+    setProcessingProgress(0);
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.currentTime = 0;
     }
+    localStorage.removeItem('thinknote-upload-draft');
   };
 
   const togglePlayback = () => {
@@ -159,14 +297,56 @@ export default function UploadPage() {
   };
 
   const saveToArchive = async () => {
-    // This would typically save to the archive
-    // For now, just show a success message
-    setResult({ ...result, saved: true });
+    if (!result || !title.trim()) return;
+
+    try {
+      setProcessing(true);
+      setProcessingStep("Saving to archive...");
+
+      const archiveData = {
+        title: title.trim(),
+        tags: tags.trim() ? tags.split(',').map(t => t.trim()) : [],
+        transcript: result.transcript,
+        summary: result.summary,
+        audioUrl: result.audioUrl,
+        wordCount: result.wordCount,
+        audioExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() // 24 hours
+      };
+
+      const response = await fetch("/api/archive", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(archiveData)
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to save to archive");
+      }
+
+      setResult({ ...result, saved: true });
+      setProcessingStep("Saved successfully!");
+      
+      // Clear form after successful save
+      setTimeout(() => {
+        resetForm();
+      }, 2000);
+
+    } catch (error) {
+      console.error("Failed to save to archive:", error);
+      setError("Failed to save to archive. Please try again.");
+    } finally {
+      setProcessing(false);
+      setProcessingStep("");
+    }
   };
 
-  // Check if we can show the transcription interface
-  const canTranscribe = blob && title.trim();
-  const isLiveRecording = isRecording && !blob;
+  const formatFileSize = (bytes: number) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -181,19 +361,25 @@ export default function UploadPage() {
         <div className="grid gap-6 lg:grid-cols-2">
           {/* Recording Section */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">Record Live</h2>
+            <h2 className="text-xl font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <Mic className="h-5 w-5 text-gray-600" />
+              Record Live
+            </h2>
             <RecordPanel 
               onComplete={onRecordComplete} 
               onRecordingStart={onRecordingStart}
             />
             
-            {/* Live Recording Transcription Notice */}
-            {isLiveRecording && (
-              <div className="mt-4 p-3 bg-gray-50 border border-gray-200 rounded-lg">
-                <div className="text-sm text-gray-700">
-                  <div className="font-medium mb-1">🎙️ Live Recording in Progress</div>
-                  <div className="text-xs text-gray-600">
-                    You can start transcription once recording is complete, or continue recording for longer content.
+            {/* Live Recording Status */}
+            {isRecording && (
+              <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <div className="text-sm text-blue-700">
+                  <div className="font-medium mb-1 flex items-center gap-2">
+                    <div className="w-2 h-2 bg-blue-600 rounded-full animate-pulse"></div>
+                    Live Recording in Progress
+                  </div>
+                  <div className="text-xs text-blue-600">
+                    Speak clearly into your microphone. Recording will continue until you stop.
                   </div>
                 </div>
               </div>
@@ -202,7 +388,10 @@ export default function UploadPage() {
 
           {/* Upload Section */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">Upload Audio</h2>
+            <h2 className="text-xl font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <Upload className="h-5 w-5 text-gray-600" />
+              Upload Audio
+            </h2>
             
             {!blob ? (
               <div className="space-y-4">
@@ -230,8 +419,13 @@ export default function UploadPage() {
                       <div className="text-sm font-medium text-gray-900 truncate">
                         {(blob as any).name || "Recorded Audio"}
                       </div>
-                      <div className="text-xs text-gray-500">
-                        {(blob.size / 1024 / 1024).toFixed(2)} MB
+                      <div className="text-xs text-gray-500 flex items-center gap-2">
+                        <span>{formatFileSize(blob.size)}</span>
+                        <span>•</span>
+                        <span className="flex items-center gap-1">
+                          <Clock className="h-3 w-3" />
+                          {blob.size > 0 ? `${Math.round(blob.size / 16000)}s` : "Unknown"}
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -239,7 +433,8 @@ export default function UploadPage() {
 
                 {/* Title Input */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
+                    <FileText className="h-4 w-4" />
                     Title *
                   </label>
                   {!isEditingTitle ? (
@@ -286,7 +481,8 @@ export default function UploadPage() {
 
                 {/* Tags Input */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
+                    <Tag className="h-4 w-4" />
                     Tags (optional)
                   </label>
                   <input
@@ -305,10 +501,13 @@ export default function UploadPage() {
           </div>
         </div>
 
-        {/* Unified Transcription Section */}
-        {canTranscribe && (
+        {/* Processing Section */}
+        {canProcess && (
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Transcribe & Summarize</h3>
+            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-gray-600" />
+              Process Audio
+            </h3>
             
             {/* Audio Preview */}
             <div className="mb-4 p-4 bg-gray-50 rounded-lg">
@@ -316,16 +515,38 @@ export default function UploadPage() {
                 <FileAudio className="h-6 w-6 text-gray-600" />
                 <div className="flex-1">
                   <div className="text-sm font-medium text-gray-900">{title}</div>
-                  <div className="text-xs text-gray-500">
-                    {blob ? `${(blob.size / 1024 / 1024).toFixed(2)} MB` : "Recording"}
+                  <div className="text-xs text-gray-500 flex items-center gap-2">
+                    <span>{blob ? formatFileSize(blob.size) : "Recording"}</span>
+                    {blob && blob.size > 0 && (
+                      <>
+                        <span>•</span>
+                        <span>{Math.round(blob.size / 16000)}s estimated</span>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
               
+              {/* Progress Bar */}
+              {processing && (
+                <div className="mb-4">
+                  <div className="flex justify-between text-xs text-gray-600 mb-1">
+                    <span>{processingStep}</span>
+                    <span>{processingProgress}%</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div 
+                      className="bg-gray-900 h-2 rounded-full transition-all duration-300"
+                      style={{ width: `${processingProgress}%` }}
+                    ></div>
+                  </div>
+                </div>
+              )}
+              
               {/* Process Button */}
               <button
                 onClick={processAudio}
-                className="w-full px-4 py-3 rounded-lg bg-gray-900 text-white font-medium hover:bg-gray-800 transition-colors disabled:opacity-50"
+                className="w-full px-4 py-3 rounded-lg bg-gray-900 text-white font-medium hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 disabled={processing}
               >
                 {processing ? (
@@ -374,13 +595,17 @@ export default function UploadPage() {
                 onClick={() => setShowTranscript(!showTranscript)}
                 className="w-full px-6 py-4 flex items-center justify-between text-left hover:bg-gray-50 transition-colors"
               >
-                <h3 className="text-lg font-semibold text-gray-900">Transcript</h3>
+                <div className="flex items-center gap-2">
+                  <FileText className="h-5 w-5 text-gray-600" />
+                  <h3 className="text-lg font-semibold text-gray-900">Transcript</h3>
+                  <span className="text-sm text-gray-500">({result.wordCount} words)</span>
+                </div>
                 {showTranscript ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
               </button>
               {showTranscript && (
                 <div className="px-6 pb-4">
                   <textarea
-                    value={result.archiveItem?.transcript || "No transcript available"}
+                    value={result.transcript}
                     readOnly
                     className="w-full h-32 rounded-lg border border-gray-300 px-3 py-2 text-sm resize-none focus:ring-2 focus:ring-gray-400 focus:border-transparent"
                   />
@@ -394,13 +619,16 @@ export default function UploadPage() {
                 onClick={() => setShowSummary(!showSummary)}
                 className="w-full px-6 py-4 flex items-center justify-between text-left hover:bg-gray-50 transition-colors"
               >
-                <h3 className="text-lg font-semibold text-gray-900">Summary</h3>
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-5 w-5 text-gray-600" />
+                  <h3 className="text-lg font-semibold text-gray-900">Summary</h3>
+                </div>
                 {showSummary ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
               </button>
               {showSummary && (
                 <div className="px-6 pb-4">
                   <div className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-gray-50">
-                    {result.archiveItem?.summary || "No summary available"}
+                    {result.summary}
                   </div>
                 </div>
               )}
@@ -411,6 +639,7 @@ export default function UploadPage() {
               <button
                 onClick={saveToArchive}
                 className="px-6 py-3 bg-gray-900 text-white rounded-lg font-medium hover:bg-gray-800 transition-colors flex items-center gap-2"
+                disabled={processing}
               >
                 <Save size={16} />
                 Save to Archive
@@ -426,11 +655,11 @@ export default function UploadPage() {
 
             {/* Success Message */}
             {result.saved && (
-              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
                 <div className="flex items-center gap-2">
-                  <CheckCircle className="h-5 w-5 text-gray-600" />
-                  <span className="text-gray-800 font-medium">
-                    Transcript and Summary saved to Archive!
+                  <CheckCircle className="h-5 w-5 text-green-600" />
+                  <span className="text-green-800 font-medium">
+                    Successfully saved to Archive! Redirecting...
                   </span>
                 </div>
               </div>
@@ -445,6 +674,12 @@ export default function UploadPage() {
               <AlertCircle className="h-5 w-5 text-red-600" />
               <span className="text-red-800">{error}</span>
             </div>
+            <button
+              onClick={() => setError(null)}
+              className="mt-2 text-sm text-red-600 hover:text-red-800 underline"
+            >
+              Dismiss
+            </button>
           </div>
         )}
 

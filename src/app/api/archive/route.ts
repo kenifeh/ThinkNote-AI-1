@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@clerk/nextjs/server"
 import { prisma } from "@/lib/prisma"
 
@@ -41,7 +41,7 @@ export async function GET(req: Request) {
         : { createdAt: "desc" as const }
 
     const [items, total] = await Promise.all([
-      prisma.archiveItem.findMany({
+      prisma.ArchiveItem.findMany({
         where,
         orderBy,
         skip,
@@ -52,10 +52,11 @@ export async function GET(req: Request) {
           tags: true,
           summary: true,
           transcript: true,
+          wordCount: true,
           createdAt: true,
           updatedAt: true,
           audioUrl: true,
-          audioExpires: true,
+          expiresAt: true,
         },
       }),
       prisma.archiveItem.count({ where }),
@@ -64,7 +65,7 @@ export async function GET(req: Request) {
     // Hide expired audio on response
     const now = new Date()
     const sanitized = items.map((it: any) => {
-      const audioOk = it.audioUrl && it.audioExpires && new Date(it.audioExpires) > now
+      const audioOk = it.audioUrl && it.expiresAt && new Date(it.expiresAt) > now
       return {
         ...it,
         audioUrl: audioOk ? it.audioUrl : null,
@@ -100,5 +101,48 @@ export async function GET(req: Request) {
       stack: err?.stack,
     })
     return NextResponse.json({ error: "Server error" }, { status: 500 })
+  }
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    const { userId } = await auth()
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    const { title, tags, transcript, summary, audioUrl, wordCount, audioExpiresAt } = await req.json()
+
+    if (!title || !transcript || !summary || !wordCount) {
+      return NextResponse.json(
+        { error: "Missing required fields" },
+        { status: 400 }
+      )
+    }
+
+    // Create new archive item
+    const archiveItem = await prisma.ArchiveItem.create({
+      data: {
+        userId,
+        title,
+        tags: tags || [],
+        transcript,
+        summary,
+        audioUrl,
+        wordCount,
+        expiresAt: audioExpiresAt ? new Date(audioExpiresAt) : null,
+      },
+    })
+
+    return NextResponse.json({
+      success: true,
+      archiveItem,
+    })
+  } catch (error) {
+    console.error("POST /api/archive failed:", error)
+    return NextResponse.json(
+      { error: "Failed to create archive item" },
+      { status: 500 }
+    )
   }
 }
