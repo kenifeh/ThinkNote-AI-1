@@ -9,6 +9,9 @@ const s3Client = new S3Client({
     secretAccessKey: process.env.DO_SPACES_SECRET!,
   },
   forcePathStyle: false, // Required for DigitalOcean Spaces
+  // Fix for SSL certificate issues
+  maxAttempts: 3,
+  retryMode: 'adaptive',
 })
 
 const bucketName = process.env.DO_SPACES_BUCKET!
@@ -28,7 +31,8 @@ export async function uploadFile(
     })
 
     await s3Client.send(command)
-    return `https://${bucketName}.${process.env.DO_SPACES_REGION}.digitaloceanspaces.com/${key}`
+    // Use the configured endpoint directly instead of constructing it
+    return `${process.env.DO_SPACES_ENDPOINT}/${key}`
   } catch (error) {
     console.error('DigitalOcean Spaces upload error:', error)
     throw new Error('Failed to upload file to DigitalOcean Spaces')

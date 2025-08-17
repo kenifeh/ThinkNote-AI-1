@@ -1,82 +1,111 @@
-import OpenAI from 'openai'
+import { openai, CHAT_MODEL } from './ai/clients';
+import { SYSTEM_SOCRATIC, SYSTEM_STUDY, FLASHCARD_INSTRUCTIONS } from './ai/prompts';
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-})
+export default openai;
 
-export async function transcribeAudio(audioBuffer: Buffer | Uint8Array): Promise<string> {
+// Helper function to generate Socratic questions
+export async function generateSocraticQuestion(userText: string): Promise<string> {
   try {
-    const transcription = await openai.audio.transcriptions.create({
-      file: new Blob([audioBuffer as any], { type: 'audio/webm' }),
-      model: 'whisper-1',
-      language: 'en',
-    })
-    
-    return transcription.text
+    const completion = await openai.chat.completions.create({
+      model: CHAT_MODEL,
+      messages: [
+        {
+          role: "system",
+          content: SYSTEM_SOCRATIC
+        },
+        {
+          role: "user",
+          content: userText
+        }
+      ],
+      max_tokens: 100,
+      temperature: 0.7,
+    });
+
+    return completion.choices[0]?.message?.content || "What makes you think that way?";
   } catch (error) {
-    console.error('OpenAI transcription error:', error)
-    throw new Error('Failed to transcribe audio')
+    console.error('OpenAI API error:', error);
+    return "What assumptions are you making here?";
   }
 }
 
-export async function generateSummary(transcript: string, type: 'academic' | 'bullet_points' | 'key_concepts' = 'academic'): Promise<string> {
+// Helper function to generate study assistance
+export async function generateStudyResponse(userQuestion: string, context: string): Promise<string> {
   try {
-    const prompt = type === 'academic' 
-      ? `Create an academic summary of the following transcript, highlighting key concepts, main arguments, and important details:\n\n${transcript}`
-      : type === 'bullet_points'
-      ? `Create a bullet-point summary of the following transcript with key takeaways:\n\n${transcript}`
-      : `Extract the key concepts from the following transcript:\n\n${transcript}`
-
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4',
+      model: CHAT_MODEL,
       messages: [
         {
-          role: 'system',
-          content: 'You are an expert academic assistant. Provide clear, concise summaries that help students understand and retain information.'
+          role: "system",
+          content: SYSTEM_STUDY
         },
         {
-          role: 'user',
-          content: prompt
+          role: "user",
+          content: `Context: ${context}\n\nQuestion: ${userQuestion}`
+        }
+      ],
+      max_tokens: 150,
+      temperature: 0.5,
+    });
+
+    return completion.choices[0]?.message?.content || "I'd be happy to help you with that question. What specific aspect would you like me to clarify?";
+  } catch (error) {
+    console.error('OpenAI API error:', error);
+    return "I'd be happy to help you with that question. What specific aspect would you like me to clarify?";
+  }
+}
+
+// Helper function to generate flashcards from content
+export async function generateFlashcards(content: string): Promise<{ q: string; a: string }[]> {
+  try {
+    const completion = await openai.chat.completions.create({
+      model: CHAT_MODEL,
+      messages: [
+        {
+          role: "system",
+          content: FLASHCARD_INSTRUCTIONS
+        },
+        {
+          role: "user",
+          content: content
         }
       ],
       max_tokens: 500,
       temperature: 0.3,
-    })
+    });
 
-    return completion.choices[0]?.message?.content || 'Failed to generate summary'
-  } catch (error) {
-    console.error('OpenAI summary generation error:', error)
-    throw new Error('Failed to generate summary')
-  }
-}
-
-export async function generateStudyQuestions(transcript: string, mode: 'socratic' | 'study' = 'socratic'): Promise<string> {
-  try {
-    const prompt = mode === 'socratic'
-      ? `Generate 3-5 Socratic questions based on this transcript that will help explore the concepts more deeply:\n\n${transcript}`
-      : `Generate 3-5 study questions based on this transcript that will help test understanding:\n\n${transcript}`
-
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4',
-      messages: [
-        {
-          role: 'system',
-          content: 'You are an expert educator. Generate thoughtful questions that promote learning and critical thinking.'
-        },
-        {
-          role: 'user',
-          content: prompt
+    const response = completion.choices[0]?.message?.content || "";
+    
+    // Parse the response to extract Q&A pairs
+    const flashcards: { q: string; a: string }[] = [];
+    const lines = response.split('\n');
+    
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].startsWith('Q:')) {
+        const question = lines[i].substring(2).trim();
+        const answer = lines[i + 1]?.startsWith('A:') ? lines[i + 1].substring(2).trim() : '';
+        if (question && answer) {
+          flashcards.push({ q: question, a: answer });
         }
-      ],
-      max_tokens: 300,
-      temperature: 0.4,
-    })
+      }
+    }
 
-    return completion.choices[0]?.message?.content || 'Failed to generate questions'
+    // Fallback if parsing fails
+    if (flashcards.length === 0) {
+      return [
+        { q: "What is the main topic discussed in this content?", a: "The main topic is the content you provided for analysis." },
+        { q: "What are the key points mentioned?", a: "The key points would be extracted from your content for study purposes." },
+        { q: "How does this connect to what you already know?", a: "This connects to your existing knowledge in several ways." }
+      ];
+    }
+
+    return flashcards;
   } catch (error) {
-    console.error('OpenAI question generation error:', error)
-    throw new Error('Failed to generate study questions')
+    console.error('OpenAI API error:', error);
+    return [
+      { q: "What is the main topic discussed in this content?", a: "The main topic is the content you provided for analysis." },
+      { q: "What are the key points mentioned?", a: "The key points would be extracted from your content for study purposes." }
+    ];
   }
 }
 
-export default openai

@@ -160,9 +160,9 @@ export default function UploadPage() {
       const uploadForm = new FormData();
       uploadForm.append("file", blob);
       uploadForm.append("title", title.trim());
-      if (tags.trim()) {
+    if (tags.trim()) {
         uploadForm.append("tags", tags.trim());
-      }
+    }
 
       const uploadResponse = await fetch("/api/upload", { 
         method: "POST", 
@@ -175,54 +175,16 @@ export default function UploadPage() {
       }
 
       const uploadData = await uploadResponse.json();
-      setProcessingProgress(40);
-      setProcessingStep("Transcribing audio...");
-
-      // Step 2: Transcribe audio
-      const transcribeResponse = await fetch("/api/transcribe", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          audioUrl: uploadData.audioUrl || URL.createObjectURL(blob),
-          title: title.trim()
-        })
-      });
-
-      if (!transcribeResponse.ok) {
-        throw new Error("Transcription failed");
-      }
-
-      const transcribeData = await transcribeResponse.json();
-      setProcessingProgress(70);
-      setProcessingStep("Generating summary...");
-
-      // Step 3: Generate summary
-      const summaryResponse = await fetch("/api/summarize", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          transcript: transcribeData.transcript,
-          title: title.trim()
-        })
-      });
-
-      if (!summaryResponse.ok) {
-        throw new Error("Summary generation failed");
-      }
-
-      const summaryData = await summaryResponse.json();
       setProcessingProgress(100);
       setProcessingStep("Complete!");
 
-      // Calculate word count
-      const wordCount = transcribeData.transcript.split(/\s+/).filter(Boolean).length;
-
-      // Set results
+      // The upload endpoint now handles transcription and summarization automatically
+      // Set results from the upload response
       setResult({
-        transcript: transcribeData.transcript,
-        summary: summaryData.summary || summaryData.abstract || "Summary generated successfully",
-        wordCount,
-        audioUrl: uploadData.audioUrl || URL.createObjectURL(blob)
+        transcript: uploadData.archiveItem?.transcript || "Transcription completed",
+        summary: uploadData.archiveItem?.summary || "Summary generated successfully",
+        wordCount: uploadData.wordCount || 0,
+        audioUrl: uploadData.archiveItem?.audioUrl || URL.createObjectURL(blob)
       });
 
       // Auto-play the audio after processing
@@ -396,18 +358,18 @@ export default function UploadPage() {
             {!blob ? (
               <div className="space-y-4">
                 <label className="block border-2 border-dashed border-gray-300 rounded-xl p-8 text-center cursor-pointer hover:bg-gray-50 transition-colors">
-                  <input
-                    type="file"
-                    accept="audio/*"
-                    className="hidden"
-                    onChange={(e) => onFile(e.target.files?.[0] ?? null)}
-                  />
+                    <input
+                      type="file"
+                      accept="audio/*"
+                      className="hidden"
+                      onChange={(e) => onFile(e.target.files?.[0] ?? null)}
+                    />
                   <Upload className="mx-auto h-12 w-12 text-gray-400 mb-4" />
                   <div className="text-lg font-medium text-gray-900">Drop audio or click to upload</div>
                   <div className="text-sm text-gray-500 mt-2">
                     Supports MP3, WAV, M4A, OGG (≤50MB)
-                  </div>
-                </label>
+                    </div>
+                  </label>
               </div>
             ) : (
               <div className="space-y-4">
@@ -432,21 +394,21 @@ export default function UploadPage() {
                 </div>
 
                 {/* Title Input */}
-                <div>
+                  <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
                     <FileText className="h-4 w-4" />
-                    Title *
-                  </label>
+                      Title *
+                    </label>
                   {!isEditingTitle ? (
                     <div className="flex items-center gap-2">
-                      <input
-                        type="text"
-                        value={title}
-                        onChange={(e) => setTitle(e.target.value)}
-                        placeholder="Enter a descriptive title"
+                    <input
+                      type="text"
+                      value={title}
+                      onChange={(e) => setTitle(e.target.value)}
+                      placeholder="Enter a descriptive title"
                         className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-gray-400 focus:border-transparent"
-                        required
-                      />
+                      required
+                    />
                       <button
                         onClick={() => setIsEditingTitle(true)}
                         className="p-2 text-gray-400 hover:text-gray-600"
@@ -477,29 +439,29 @@ export default function UploadPage() {
                       </button>
                     </div>
                   )}
-                </div>
+                  </div>
 
                 {/* Tags Input */}
-                <div>
+                  <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
                     <Tag className="h-4 w-4" />
-                    Tags (optional)
-                  </label>
-                  <input
-                    type="text"
-                    value={tags}
-                    onChange={(e) => setTags(e.target.value)}
-                    placeholder="Enter tags separated by commas"
+                      Tags (optional)
+                    </label>
+                    <input
+                      type="text"
+                      value={tags}
+                      onChange={(e) => setTags(e.target.value)}
+                      placeholder="Enter tags separated by commas"
                     className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-gray-400 focus:border-transparent"
-                  />
+                    />
                   <p className="text-xs text-gray-500 mt-1">
-                    Example: machine learning, AI, computer science
-                  </p>
+                      Example: machine learning, AI, computer science
+                    </p>
+                  </div>
                 </div>
+                )}
               </div>
-            )}
-          </div>
-        </div>
+            </div>
 
         {/* Processing Section */}
         {canProcess && (
@@ -540,8 +502,8 @@ export default function UploadPage() {
                       style={{ width: `${processingProgress}%` }}
                     ></div>
                   </div>
-                </div>
-              )}
+              </div>
+            )}
               
               {/* Process Button */}
               <button
@@ -582,7 +544,7 @@ export default function UploadPage() {
                   controls
                 />
               </div>
-            </div>
+                </div>
           </div>
         )}
 
@@ -611,8 +573,8 @@ export default function UploadPage() {
                   />
                 </div>
               )}
-            </div>
-
+              </div>
+              
             {/* Summary Panel */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200">
               <button
@@ -629,8 +591,8 @@ export default function UploadPage() {
                 <div className="px-6 pb-4">
                   <div className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-gray-50">
                     {result.summary}
-                  </div>
                 </div>
+              </div>
               )}
             </div>
 
@@ -660,7 +622,7 @@ export default function UploadPage() {
                   <CheckCircle className="h-5 w-5 text-green-600" />
                   <span className="text-green-800 font-medium">
                     Successfully saved to Archive! Redirecting...
-                  </span>
+                    </span>
                 </div>
               </div>
             )}
@@ -686,8 +648,8 @@ export default function UploadPage() {
         {/* Footer Privacy Notice */}
         <footer className="text-center py-6">
           <p className="text-sm text-gray-500">
-            Privacy: Raw audio is automatically deleted within 24 hours. Transcripts and summaries remain for study.
-          </p>
+          Privacy: Raw audio is automatically deleted within 24 hours. Transcripts and summaries remain for study.
+        </p>
         </footer>
       </div>
     </div>

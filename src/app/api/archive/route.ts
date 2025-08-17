@@ -121,7 +121,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Create new archive item
-    const archiveItem = await prisma.ArchiveItem.create({
+    const archiveItem = await prisma.archiveItem.create({
       data: {
         userId,
         title,

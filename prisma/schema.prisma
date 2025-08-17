@@ -9,7 +9,7 @@ datasource db {
 }
 
 model User {
-  id          String        @id
+  id          String        @id @default(cuid())
   email       String?
   createdAt   DateTime      @default(now())
   ArchiveItem ArchiveItem[]
@@ -18,7 +18,7 @@ model User {
 }
 
 model ArchiveItem {
-  id           String    @id
+  id           String    @id @default(cuid())
   userId       String
   title        String
   tags         String[]  @default([])

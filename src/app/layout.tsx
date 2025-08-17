@@ -15,8 +15,8 @@ export default function RootLayout({
 }) {
   return (
     <ClerkProvider>
-      <html lang="en" className="bg-white text-neutral-900">
-        <body className="min-h-screen">
+      <html lang="en" className="dark bg-white text-gray-900">
+        <body className="min-h-screen bg-white text-gray-900">
           <MainNav />
           <main className="mx-auto max-w-6xl px-4 py-6">{children}</main>
         </body>
